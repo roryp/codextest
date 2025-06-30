@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>Pet Story Result</title>
+</head>
+<body>
+<p><strong>Description:</strong> <span th:text="${caption}"></span></p>
+<p><strong>Story:</strong> <span th:text="${story}"></span></p>
+<a th:href="@{/}">Upload another image</a>
+</body>
+</html>
