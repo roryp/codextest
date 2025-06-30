@@ -162,21 +162,6 @@ public class PetController {
         int lastDot = filename.lastIndexOf('.');
         return lastDot > 0 ? filename.substring(lastDot) : ".tmp";
     }
-
-    @GetMapping("/test-api")
-    public String testApi(Model model) {
-        logger.info("Testing GitHub Models API connectivity");
-        try {
-            String testStory = storyService.generateStory("A simple test description of a cat");
-            model.addAttribute("result", "API Test Successful! Response: " + testStory.substring(0, Math.min(200, testStory.length())) + "...");
-            model.addAttribute("success", true);
-        } catch (Exception e) {
-            logger.error("API test failed", e);
-            model.addAttribute("result", "API Test Failed: " + e.getMessage());
-            model.addAttribute("success", false);
-        }
-        return "test-result";
-    }
     
     /**
      * Generate a fallback caption when AI service is unavailable
