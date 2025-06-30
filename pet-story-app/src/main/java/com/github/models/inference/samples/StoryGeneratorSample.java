@@ -42,6 +42,6 @@ public final class StoryGeneratorSample {
         options.setModel(model);
 
         ChatCompletions completions = client.complete(options);
-        System.out.println(completions.getChoice().getMessage().getContent());
+        System.out.println(completions.getChoices().get(0).getMessage().getContent());
     }
 }

@@ -39,6 +39,6 @@ public class StoryService {
         options.setModel("openai/gpt-4.1-nano");
 
         ChatCompletions completions = client.complete(options);
-        return completions.getChoice().getMessage().getContent();
+        return completions.getChoices().get(0).getMessage().getContent();
     }
 }

@@ -44,6 +44,6 @@ public class ImageService {
         options.setModel("microsoft/Phi-4-multimodal-instruct");
 
         ChatCompletions completions = client.complete(options);
-        return completions.getChoice().getMessage().getContent();
+        return completions.getChoices().get(0).getMessage().getContent();
     }
 }
