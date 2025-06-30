@@ -24,8 +24,9 @@ public class StoryService {
     public StoryService() {
         String token = System.getenv("GITHUB_TOKEN");
         if (token == null) {
-            logger.error("GITHUB_TOKEN environment variable not set");
-            throw new IllegalStateException("GITHUB_TOKEN not set");
+            logger.warn("GITHUB_TOKEN environment variable not set - service will not be available");
+            this.client = null;
+            return;
         }
         
         try {
@@ -51,6 +52,11 @@ public class StoryService {
             description = description.substring(0, 1000);
         }
         
+        if (client == null) {
+            logger.warn("StoryService client not available - falling back to mock service");
+            throw new RuntimeException("StoryService not available - GITHUB_TOKEN not configured");
+        }
+        
         try {
             logger.debug("Generating story for description: {}", description);
             
@@ -60,7 +66,7 @@ public class StoryService {
             );
 
             ChatCompletionsOptions options = new ChatCompletionsOptions(messages);
-            options.setModel("openai/gpt-4.1-nano");
+            options.setModel("github:azure-openai/gpt-4o-mini");
 
             logger.debug("Sending request to Azure AI service for story generation");
             ChatCompletions completions = client.complete(options);
@@ -76,6 +82,10 @@ public class StoryService {
             
         } catch (Exception e) {
             logger.error("Error generating story for description: {}", description, e);
+            // Check if it's a budget limit error or other service error
+            if (e.getMessage() != null && e.getMessage().contains("budget limit")) {
+                throw new RuntimeException("GitHub Models API budget limit reached. Please check your account or use a different API key.", e);
+            }
             throw new RuntimeException("Failed to generate story", e);
         }
     }

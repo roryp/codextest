@@ -28,8 +28,9 @@ public class ImageService {
     public ImageService() {
         String token = System.getenv("GITHUB_TOKEN");
         if (token == null) {
-            logger.error("GITHUB_TOKEN environment variable not set");
-            throw new IllegalStateException("GITHUB_TOKEN not set");
+            logger.warn("GITHUB_TOKEN environment variable not set - service will not be available");
+            this.client = null;
+            return;
         }
         
         try {
@@ -55,6 +56,11 @@ public class ImageService {
             throw new IllegalArgumentException("Image file cannot be empty");
         }
         
+        if (client == null) {
+            logger.warn("ImageService client not available - falling back to mock service");
+            throw new RuntimeException("ImageService not available - GITHUB_TOKEN not configured");
+        }
+        
         try {
             logger.debug("Reading image file: {}", image.getAbsolutePath());
             String base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(image.toPath()));
@@ -65,7 +71,7 @@ public class ImageService {
             );
 
             ChatCompletionsOptions options = new ChatCompletionsOptions(messages);
-            options.setModel("microsoft/Phi-4-multimodal-instruct");
+            options.setModel("github:azure-openai/gpt-4o-mini");
 
             logger.debug("Sending request to Azure AI service");
             ChatCompletions completions = client.complete(options);
@@ -84,6 +90,10 @@ public class ImageService {
             throw new RuntimeException("Failed to read image file", e);
         } catch (Exception e) {
             logger.error("Error generating image caption", e);
+            // Check if it's a budget limit error or other service error
+            if (e.getMessage() != null && e.getMessage().contains("budget limit")) {
+                throw new RuntimeException("GitHub Models API budget limit reached. Please check your account or use a different API key.", e);
+            }
             throw new RuntimeException("Failed to generate image caption", e);
         }
     }

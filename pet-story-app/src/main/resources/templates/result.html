@@ -63,6 +63,8 @@
     
     <div class="file-info" th:if="${fileName}">
         <em>Generated from: <span th:text="${fileName}">filename</span></em>
+        <br/>
+        <small th:if="${analysisType}" th:text="${analysisType}" style="color: #007bff;"></small>
     </div>
     
     <div class="result-section">
