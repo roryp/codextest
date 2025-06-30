@@ -1,40 +1,44 @@
 package com.example.petstory;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.azure.ai.inference.ChatCompletionsClient;
+import com.azure.ai.inference.ChatCompletionsClientBuilder;
+import com.azure.ai.inference.models.ChatCompletions;
+import com.azure.ai.inference.models.ChatCompletionsOptions;
+import com.azure.ai.inference.models.ChatRequestMessage;
+import com.azure.ai.inference.models.ChatRequestSystemMessage;
+import com.azure.ai.inference.models.ChatRequestUserMessage;
+import com.azure.core.credential.AzureKeyCredential;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.util.Arrays;
+import java.util.List;
 
 @Service
 public class StoryService {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private final ChatCompletionsClient client;
 
-    public String generateStory(String description) throws Exception {
+    public StoryService() {
         String token = System.getenv("GITHUB_TOKEN");
         if (token == null) {
             throw new IllegalStateException("GITHUB_TOKEN not set");
         }
+        this.client = new ChatCompletionsClientBuilder()
+                .credential(new AzureKeyCredential(token))
+                .endpoint("https://models.github.ai/inference")
+                .buildClient();
+    }
 
-        String prompt = "Write a fun short story about a pet described as: " + description;
-        String requestBody = MAPPER.createObjectNode()
-                .put("prompt", prompt)
-                .toString();
+    public String generateStory(String description) {
+        List<ChatRequestMessage> messages = Arrays.asList(
+                new ChatRequestSystemMessage("You are a creative storyteller."),
+                new ChatRequestUserMessage("Write a fun short story about a pet described as: " + description)
+        );
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.github.com/models/gpt2:generate"))
-                .header("Authorization", "Bearer " + token)
-                .header("Accept", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                .build();
+        ChatCompletionsOptions options = new ChatCompletionsOptions(messages);
+        options.setModel("openai/gpt-4.1-nano");
 
-        HttpClient client = HttpClient.newHttpClient();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        JsonNode node = MAPPER.readTree(response.body());
-        return node.get("text").asText();
+        ChatCompletions completions = client.complete(options);
+        return completions.getChoice().getMessage().getContent();
     }
 }
