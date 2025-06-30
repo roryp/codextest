@@ -1,6 +1,7 @@
 # Pet Story App
 
 This project provides a small Spring Boot application that lets you upload a picture of your pet and generates a fun story about it. The example now integrates directly with GitHub Models over HTTPS instead of running local Python scripts.
+It uses the `azure-ai-inference` library to call the `openai/gpt-4.1-nano` chat model for story generation.
 
 ## Building and running locally
 
