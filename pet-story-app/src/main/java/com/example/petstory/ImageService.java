@@ -1,23 +1,43 @@
 package com.example.petstory;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.util.Base64;
 
 @Service
 public class ImageService {
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     public String caption(File image) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder("python3", "scripts/caption.py", image.getAbsolutePath());
-        pb.directory(new File(".."));
-        Process process = pb.start();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String caption = reader.readLine();
-            process.waitFor();
-            return caption;
+        String token = System.getenv("GITHUB_TOKEN");
+        if (token == null) {
+            throw new IllegalStateException("GITHUB_TOKEN not set");
         }
+
+        String base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(image.toPath()));
+        String requestBody = MAPPER.createObjectNode()
+                .put("image", base64)
+                .toString();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.github.com/models/blip-image-captioning-base:predict"))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        JsonNode node = MAPPER.readTree(response.body());
+        return node.get("caption").asText();
     }
 }
