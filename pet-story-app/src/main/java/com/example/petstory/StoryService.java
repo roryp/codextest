@@ -8,6 +8,8 @@ import com.azure.ai.inference.models.ChatRequestMessage;
 import com.azure.ai.inference.models.ChatRequestSystemMessage;
 import com.azure.ai.inference.models.ChatRequestUserMessage;
 import com.azure.core.credential.AzureKeyCredential;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
@@ -16,29 +18,65 @@ import java.util.List;
 @Service
 public class StoryService {
 
+    private static final Logger logger = LoggerFactory.getLogger(StoryService.class);
     private final ChatCompletionsClient client;
 
     public StoryService() {
         String token = System.getenv("GITHUB_TOKEN");
         if (token == null) {
+            logger.error("GITHUB_TOKEN environment variable not set");
             throw new IllegalStateException("GITHUB_TOKEN not set");
         }
-        this.client = new ChatCompletionsClientBuilder()
-                .credential(new AzureKeyCredential(token))
-                .endpoint("https://models.github.ai/inference")
-                .buildClient();
+        
+        try {
+            this.client = new ChatCompletionsClientBuilder()
+                    .credential(new AzureKeyCredential(token))
+                    .endpoint("https://models.github.ai/inference")
+                    .buildClient();
+            logger.info("StoryService initialized successfully");
+        } catch (Exception e) {
+            logger.error("Failed to initialize Azure AI client", e);
+            throw new RuntimeException("Failed to initialize story service", e);
+        }
     }
 
     public String generateStory(String description) {
-        List<ChatRequestMessage> messages = Arrays.asList(
-                new ChatRequestSystemMessage("You are a creative storyteller."),
-                new ChatRequestUserMessage("Write a fun short story about a pet described as: " + description)
-        );
+        if (description == null || description.trim().isEmpty()) {
+            logger.warn("Empty or null description provided");
+            throw new IllegalArgumentException("Description cannot be empty");
+        }
+        
+        if (description.length() > 1000) {
+            logger.warn("Description too long, truncating: {} characters", description.length());
+            description = description.substring(0, 1000);
+        }
+        
+        try {
+            logger.debug("Generating story for description: {}", description);
+            
+            List<ChatRequestMessage> messages = Arrays.asList(
+                    new ChatRequestSystemMessage("You are a creative storyteller who writes fun, family-friendly short stories about pets. Keep stories under 500 words and appropriate for all ages."),
+                    new ChatRequestUserMessage("Write a fun short story about a pet described as: " + description)
+            );
 
-        ChatCompletionsOptions options = new ChatCompletionsOptions(messages);
-        options.setModel("openai/gpt-4.1-nano");
+            ChatCompletionsOptions options = new ChatCompletionsOptions(messages);
+            options.setModel("openai/gpt-4.1-nano");
 
-        ChatCompletions completions = client.complete(options);
-        return completions.getChoice().getMessage().getContent();
+            logger.debug("Sending request to Azure AI service for story generation");
+            ChatCompletions completions = client.complete(options);
+            
+            if (completions.getChoices() == null || completions.getChoices().isEmpty()) {
+                logger.error("No response received from AI service");
+                throw new RuntimeException("No response from AI service");
+            }
+            
+            String result = completions.getChoices().get(0).getMessage().getContent();
+            logger.debug("Generated story of length: {}", result.length());
+            return result;
+            
+        } catch (Exception e) {
+            logger.error("Error generating story for description: {}", description, e);
+            throw new RuntimeException("Failed to generate story", e);
+        }
     }
 }
