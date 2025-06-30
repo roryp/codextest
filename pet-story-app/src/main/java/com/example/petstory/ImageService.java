@@ -71,7 +71,7 @@ public class ImageService {
             );
 
             ChatCompletionsOptions options = new ChatCompletionsOptions(messages);
-            options.setModel("github:azure-openai/gpt-4o-mini");
+            options.setModel("openai/gpt-4o-mini");
 
             logger.debug("Sending request to Azure AI service");
             ChatCompletions completions = client.complete(options);
