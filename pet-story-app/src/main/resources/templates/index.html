@@ -41,6 +41,10 @@
         .upload-btn:hover {
             background-color: #0056b3;
         }
+        .upload-btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
         .error {
             color: #dc3545;
             background-color: #f8d7da;
@@ -49,10 +53,48 @@
             border-radius: 5px;
             margin: 10px 0;
         }
+        .success {
+            color: #155724;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .processing {
+            color: #856404;
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
         .file-requirements {
             color: #666;
             font-size: 14px;
             margin: 10px 0;
+        }
+        .preview-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .preview-image {
+            max-width: 300px;
+            max-height: 300px;
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        .description-output {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: left;
+        }
+        .hidden {
+            display: none;
         }
     </style>
 </head>
@@ -63,18 +105,32 @@
     <div th:if="${error}" class="error" th:text="${error}"></div>
     
     <div class="upload-form">
-        <form method="POST" th:action="@{/upload}" enctype="multipart/form-data">
+        <form id="storyForm" method="POST" th:action="@{/generate-story}">
             <p>Upload a picture of your pet and get a fun story!</p>
             
             <input type="file" 
-                   name="image" 
+                   id="imageInput"
                    accept="image/*" 
                    required 
                    class="file-input" />
             
+            <div id="previewContainer" class="preview-container hidden">
+                <img id="previewImage" class="preview-image" alt="Pet preview" />
+            </div>
+            
+            <div id="statusMessage" class="hidden"></div>
+            
+            <div id="descriptionContainer" class="description-output hidden">
+                <h4>Pet Description:</h4>
+                <p id="descriptionText"></p>
+            </div>
+            
+            <input type="hidden" id="descriptionInput" name="description" />
+            
             <br/>
             
-            <button type="submit" class="upload-btn">Generate Story</button>
+            <button type="button" id="analyzeBtn" class="upload-btn" onclick="analyzeImage()">Analyze Image</button>
+            <button type="submit" id="generateBtn" class="upload-btn hidden">Generate Story</button>
         </form>
         
         <div class="file-requirements">
@@ -87,5 +143,228 @@
         </div>
     </div>
 </div>
+
+<script type="module">
+    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0';
+    
+    // Disable local models to use CDN
+    env.allowLocalModels = false;
+    
+    let classifier = null;
+    
+    // Initialize the image classification pipeline
+    async function initializeModel() {
+        try {
+            showStatus('Loading AI model (this may take a moment)...', 'processing');
+            
+            // Use a more reliable model that's known to work well
+            classifier = await pipeline('image-classification', 'Xenova/vit-base-patch16-224', {
+                quantized: true, // Use quantized version for faster loading
+                device: 'cpu'    // Force CPU usage for compatibility
+            });
+            
+            showStatus('Model loaded successfully!', 'success');
+            return true;
+        } catch (error) {
+            console.error('Error loading model:', error);
+            showStatus('AI model unavailable - using fallback analysis', 'processing');
+            return false;
+        }
+    }
+    
+    window.analyzeImage = async function() {
+        const imageInput = document.getElementById('imageInput');
+        const file = imageInput.files[0];
+        
+        if (!file) {
+            showStatus('Please select an image first.', 'error');
+            return;
+        }
+        
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            showStatus('Please upload a valid image file (JPEG, PNG, GIF, WebP).', 'error');
+            return;
+        }
+        
+        // Validate file size (10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            showStatus('File size must be less than 10MB.', 'error');
+            return;
+        }
+        
+        // Show preview
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('previewImage');
+            preview.src = e.target.result;
+            document.getElementById('previewContainer').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+        
+        // Disable analyze button
+        document.getElementById('analyzeBtn').disabled = true;
+        
+        try {
+            // Initialize model if not already done
+            if (!classifier) {
+                const initialized = await initializeModel();
+                if (!initialized) {
+                    // Use fallback if model fails to load
+                    const fallbackDescription = generateFallbackDescription(file.name);
+                    document.getElementById('descriptionText').textContent = fallbackDescription;
+                    document.getElementById('descriptionInput').value = fallbackDescription;
+                    document.getElementById('descriptionContainer').classList.remove('hidden');
+                    document.getElementById('generateBtn').classList.remove('hidden');
+                    document.getElementById('analyzeBtn').disabled = false;
+                    return;
+                }
+            }
+            
+            showStatus('Analyzing your pet image...', 'processing');
+            
+            // Create image element for classification
+            const img = new Image();
+            img.crossOrigin = 'anonymous'; // Enable CORS
+            img.onload = async function() {
+                try {
+                    // Create canvas to convert image to the right format
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    
+                    // Classify the image using the canvas
+                    const results = await classifier(canvas);
+                    
+                    // Generate description from results
+                    const description = generatePetDescription(results, file.name);
+                    
+                    // Show description
+                    document.getElementById('descriptionText').textContent = description;
+                    document.getElementById('descriptionInput').value = description;
+                    document.getElementById('descriptionContainer').classList.remove('hidden');
+                    document.getElementById('generateBtn').classList.remove('hidden');
+                    
+                    showStatus('Analysis complete! Now you can generate your story.', 'success');
+                } catch (error) {
+                    console.error('Error during image analysis:', error);
+                    
+                    // Fallback: Generate a generic pet description
+                    const fallbackDescription = generateFallbackDescription(file.name);
+                    document.getElementById('descriptionText').textContent = fallbackDescription;
+                    document.getElementById('descriptionInput').value = fallbackDescription;
+                    document.getElementById('descriptionContainer').classList.remove('hidden');
+                    document.getElementById('generateBtn').classList.remove('hidden');
+                    
+                    showStatus('Using fallback analysis - AI model temporarily unavailable.', 'processing');
+                } finally {
+                    document.getElementById('analyzeBtn').disabled = false;
+                }
+            };
+            
+            img.onerror = function() {
+                showStatus('Error loading image. Please try a different image.', 'error');
+                document.getElementById('analyzeBtn').disabled = false;
+            };
+            
+            // Load image for classification
+            const reader2 = new FileReader();
+            reader2.onload = function(e) {
+                img.src = e.target.result;
+            };
+            reader2.readAsDataURL(file);
+            
+        } catch (error) {
+            console.error('Error:', error);
+            showStatus('An error occurred. Please try again.', 'error');
+            document.getElementById('analyzeBtn').disabled = false;
+        }
+    };
+    
+    function generatePetDescription(results, filename) {
+        // Filter for animal-related classifications
+        const animalKeywords = ['dog', 'cat', 'bird', 'rabbit', 'hamster', 'fish', 'turtle', 'snake', 'lizard', 'ferret', 'guinea pig', 'mouse', 'rat', 'chinchilla', 'hedgehog'];
+        
+        let petClassifications = results.filter(result => 
+            animalKeywords.some(keyword => result.label.toLowerCase().includes(keyword))
+        );
+        
+        // If no specific pet classifications found, use top results
+        if (petClassifications.length === 0) {
+            petClassifications = results.slice(0, 3);
+        }
+        
+        // Generate description
+        if (petClassifications.length > 0) {
+            const topResult = petClassifications[0];
+            const confidence = Math.round(topResult.score * 100);
+            
+            let description = `A beautiful ${topResult.label.toLowerCase()}`;
+            
+            // Add confidence if high
+            if (confidence > 70) {
+                description += ` with distinctive features`;
+            }
+            
+            // Add additional characteristics from other results
+            if (petClassifications.length > 1) {
+                const secondResult = petClassifications[1];
+                description += ` showing characteristics of ${secondResult.label.toLowerCase()}`;
+            }
+            
+            description += `. This lovely pet displays a gentle and friendly demeanor, captured in a beautiful photograph that showcases their unique personality and charm.`;
+            
+            return description;
+        } else {
+            // Fallback description
+            return "An adorable pet captured in a beautiful photograph, displaying their unique personality and gentle nature. This wonderful companion shows the loving characteristics that make them a perfect family member.";
+        }
+    }
+    
+    function generateFallbackDescription(filename) {
+        const fallbackDescriptions = [
+            "A beautiful pet captured in a lovely photograph, showing their unique personality and charm.",
+            "An adorable companion animal photographed in natural lighting, displaying their gentle nature.",
+            "A wonderful pet portrait showcasing their distinctive features and friendly demeanor.",
+            "A charming animal friend captured in a moment that highlights their loving character.",
+            "A delightful pet photograph that captures their essence and playful spirit beautifully."
+        ];
+        
+        // Use filename hash for consistent responses
+        const hash = filename.split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+        }, 0);
+        const index = Math.abs(hash % fallbackDescriptions.length);
+        return fallbackDescriptions[index];
+    }
+    
+    function showStatus(message, type) {
+        const statusDiv = document.getElementById('statusMessage');
+        statusDiv.textContent = message;
+        statusDiv.className = type;
+        statusDiv.classList.remove('hidden');
+        
+        // Auto-hide success messages after 3 seconds
+        if (type === 'success') {
+            setTimeout(() => {
+                statusDiv.classList.add('hidden');
+            }, 3000);
+        }
+    }
+    
+    // Handle file input change
+    document.getElementById('imageInput').addEventListener('change', function() {
+        // Reset form state when new file is selected
+        document.getElementById('descriptionContainer').classList.add('hidden');
+        document.getElementById('generateBtn').classList.add('hidden');
+        document.getElementById('previewContainer').classList.add('hidden');
+        document.getElementById('statusMessage').classList.add('hidden');
+        document.getElementById('descriptionInput').value = '';
+    });
+</script>
 </body>
 </html>

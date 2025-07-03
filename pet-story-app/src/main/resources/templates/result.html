@@ -61,9 +61,7 @@
 <div class="container">
     <h1>🐾 Your Pet's Story</h1>
     
-    <div class="file-info" th:if="${fileName}">
-        <em>Generated from: <span th:text="${fileName}">filename</span></em>
-        <br/>
+    <div class="file-info">
         <small th:if="${analysisType}" th:text="${analysisType}" style="color: #007bff;"></small>
     </div>
     
@@ -78,7 +76,7 @@
     </div>
     
     <div style="text-align: center;">
-        <a th:href="@{/}" class="back-link">📸 Upload Another Image</a>
+        <a th:href="@{/}" class="back-link">📸 Analyze Another Image</a>
     </div>
 </div>
 </body>
